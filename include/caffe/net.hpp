@@ -29,7 +29,7 @@ class Net {
   virtual ~Net() {}
 
   /// @brief Initialize a network with a NetParameter.
-  void Init(const NetParameter& param);
+  void Init(const NetParameter& param);	//fang: 创建blob和layer, 搭建整个网络框架, 以及调用各层的SetUp函数
 
   /**
    * @brief Run Forward and return the result.
@@ -51,7 +51,7 @@ class Net {
    * the middle may be incorrect if all of the layers of a fan-in are not
    * included.
    */
-  Dtype ForwardFromTo(int start, int end);
+  Dtype ForwardFromTo(int start, int end);	//fang: 执行从start层到end层的前向传递，采用简单的for循环调用
   Dtype ForwardFrom(int start);
   Dtype ForwardTo(int end);
   /// @brief DEPRECATED; set input blobs then use Forward() instead.
@@ -70,7 +70,7 @@ class Net {
    * provided during the forward pass.
    */
   void Backward();
-  void BackwardFromTo(int start, int end);
+  void BackwardFromTo(int start, int end);	//fang:执行从start层到end层的后向传递
   void BackwardFrom(int start);
   void BackwardTo(int end);
 
@@ -110,12 +110,12 @@ class Net {
    * @brief For an already initialized net, copies the pre-trained layers from
    *        another Net.
    */
-  void CopyTrainedLayersFrom(const NetParameter& param);
+  void CopyTrainedLayersFrom(const NetParameter& param);	//fang: 通过一个已经训练好的网络初始化 layers parameter
   void CopyTrainedLayersFrom(const string& trained_filename);
   void CopyTrainedLayersFromBinaryProto(const string& trained_filename);
   void CopyTrainedLayersFromHDF5(const string& trained_filename);
   /// @brief Writes the net to a proto.
-  void ToProto(NetParameter* param, bool write_diff = false) const;
+  void ToProto(NetParameter* param, bool write_diff = false) const;	//fang: 完成网络的序列化到文件，循环调用了每个层的ToProto函数
   /// @brief Writes the net to an HDF5 file.
   void ToHDF5(const string& filename, bool write_diff = false) const;
 
@@ -278,23 +278,23 @@ class Net {
   /// @brief The phase: TRAIN or TEST
   Phase phase_;
   /// @brief Individual layers in the net
-  vector<shared_ptr<Layer<Dtype> > > layers_;
+  vector<shared_ptr<Layer<Dtype> > > layers_;	//fang:
   vector<string> layer_names_;
   map<string, int> layer_names_index_;
   vector<bool> layer_need_backward_;
   /// @brief the blobs storing intermediate results between the layer.
-  vector<shared_ptr<Blob<Dtype> > > blobs_;
+  vector<shared_ptr<Blob<Dtype> > > blobs_;		//fang: 存放每一层产生的 blobs的中间结果
   vector<string> blob_names_;
   map<string, int> blob_names_index_;
   vector<bool> blob_need_backward_;
   /// bottom_vecs stores the vectors containing the input for each layer.
   /// They don't actually host the blobs (blobs_ does), so we simply store
   /// pointers.
-  vector<vector<Blob<Dtype>*> > bottom_vecs_;
+  vector<vector<Blob<Dtype>*> > bottom_vecs_;	//fang: 存放每一层的 bottom blobs(只是个指针)
   vector<vector<int> > bottom_id_vecs_;
   vector<vector<bool> > bottom_need_backward_;
   /// top_vecs stores the vectors containing the output for each layer
-  vector<vector<Blob<Dtype>*> > top_vecs_;
+  vector<vector<Blob<Dtype>*> > top_vecs_;		//fang: 存放每一层的 top blobs(只是个指针)
   vector<vector<int> > top_id_vecs_;
   /// Vector of weight in the loss (or objective) function of each net blob,
   /// indexed by blob_id.
@@ -311,7 +311,7 @@ class Net {
   vector<Blob<Dtype>*> net_output_blobs_;
   /// The parameters in the network.
   vector<shared_ptr<Blob<Dtype> > > params_;
-  vector<Blob<Dtype>*> learnable_params_;
+  vector<Blob<Dtype>*> learnable_params_;	//fang: 需要学习更新的参数,会指向每一层中的 learnable_params_
   /**
    * The mapping from params_ -> learnable_params_: we have
    * learnable_param_ids_.size() == params_.size(),

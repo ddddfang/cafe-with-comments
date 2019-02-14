@@ -9,11 +9,11 @@ namespace caffe {
 
 template <typename Dtype>
 void SoftmaxWithLossLayer<Dtype>::LayerSetUp(
-    const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
+    const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {	//SoftmaxWithLossLayer 虽然继承自 losslayer 但是确实是包了一层 softmax_layer
   LossLayer<Dtype>::LayerSetUp(bottom, top);
   LayerParameter softmax_param(this->layer_param_);
   softmax_param.set_type("Softmax");
-  softmax_layer_ = LayerRegistry<Dtype>::CreateLayer(softmax_param);
+  softmax_layer_ = LayerRegistry<Dtype>::CreateLayer(softmax_param);	//fang: 这里创建了 softmax_layer ...
   softmax_bottom_vec_.clear();
   softmax_bottom_vec_.push_back(bottom[0]);
   softmax_top_vec_.clear();
@@ -38,12 +38,12 @@ void SoftmaxWithLossLayer<Dtype>::LayerSetUp(
 template <typename Dtype>
 void SoftmaxWithLossLayer<Dtype>::Reshape(
     const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
-  LossLayer<Dtype>::Reshape(bottom, top);
-  softmax_layer_->Reshape(softmax_bottom_vec_, softmax_top_vec_);
+  LossLayer<Dtype>::Reshape(bottom, top);							//fang
+  softmax_layer_->Reshape(softmax_bottom_vec_, softmax_top_vec_);	//fang
   softmax_axis_ =
-      bottom[0]->CanonicalAxisIndex(this->layer_param_.softmax_param().axis());
-  outer_num_ = bottom[0]->count(0, softmax_axis_);
-  inner_num_ = bottom[0]->count(softmax_axis_ + 1);
+      bottom[0]->CanonicalAxisIndex(this->layer_param_.softmax_param().axis());	//axis: default = 1
+  outer_num_ = bottom[0]->count(0, softmax_axis_);	//[0,1) outer_num_ = n = 100
+  inner_num_ = bottom[0]->count(softmax_axis_ + 1);	//[2,end) inner_num_ = h*w = 1
   CHECK_EQ(outer_num_ * inner_num_, bottom[1]->count())
       << "Number of labels must match number of predictions; "
       << "e.g., if softmax axis == 1 and prediction shape is (N, C, H, W), "
@@ -89,28 +89,28 @@ template <typename Dtype>
 void SoftmaxWithLossLayer<Dtype>::Forward_cpu(
     const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
   // The forward pass computes the softmax prob values.
-  softmax_layer_->Forward(softmax_bottom_vec_, softmax_top_vec_);
-  const Dtype* prob_data = prob_.cpu_data();
-  const Dtype* label = bottom[1]->cpu_data();
+  softmax_layer_->Forward(softmax_bottom_vec_, softmax_top_vec_);	//softmax_top_vec_ 中就是 prob_ 
+  const Dtype* prob_data = prob_.cpu_data();	//下面这是要手动计算 loss,softmax_top_vec_中就是 prob_,即 prob_ 是 softmax_layer_ forward的结果,概率
+  const Dtype* label = bottom[1]->cpu_data();	//看起来这个label并不是 one-hot 表示的啊
   int dim = prob_.count() / outer_num_;
   int count = 0;
   Dtype loss = 0;
   for (int i = 0; i < outer_num_; ++i) {
     for (int j = 0; j < inner_num_; j++) {
-      const int label_value = static_cast<int>(label[i * inner_num_ + j]);
+      const int label_value = static_cast<int>(label[i * inner_num_ + j]);	//label[i]
       if (has_ignore_label_ && label_value == ignore_label_) {
         continue;
       }
       DCHECK_GE(label_value, 0);
       DCHECK_LT(label_value, prob_.shape(softmax_axis_));
-      loss -= log(std::max(prob_data[i * dim + label_value * inner_num_ + j],
-                           Dtype(FLT_MIN)));
+      loss -= log(std::max(prob_data[i * dim + label_value * inner_num_ + j],	
+                           Dtype(FLT_MIN)));	//prob_data[i * dim + label_value * inner_num_ + j] 即 prob_data[10+label_value], prob_data[20+label_value], prob_data[30+label_value], ...
       ++count;
     }
   }
-  top[0]->mutable_cpu_data()[0] = loss / get_normalizer(normalization_, count);
+  top[0]->mutable_cpu_data()[0] = loss / get_normalizer(normalization_, count);	//top[0]中存了个标量 loss
   if (top.size() == 2) {
-    top[1]->ShareData(prob_);
+    top[1]->ShareData(prob_);													//top[1]中是probably
   }
 }
 

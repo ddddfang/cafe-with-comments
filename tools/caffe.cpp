@@ -73,7 +73,7 @@ __Registerer_##func g_registerer_##func; \
 
 static BrewFunction GetBrewFunction(const caffe::string& name) {
   if (g_brew_map.count(name)) {
-    return g_brew_map[name];
+    return g_brew_map[name];	//fang
   } else {
     LOG(ERROR) << "Available caffe actions:";
     for (BrewMap::iterator it = g_brew_map.begin();
@@ -171,7 +171,7 @@ int train() {
   vector<string> stages = get_stages_from_flags();
 
   caffe::SolverParameter solver_param;
-  caffe::ReadSolverParamsFromTextFileOrDie(FLAGS_solver, &solver_param);
+  caffe::ReadSolverParamsFromTextFileOrDie(FLAGS_solver, &solver_param);	//fang
 
   solver_param.mutable_train_state()->set_level(FLAGS_level);
   for (int i = 0; i < stages.size(); i++) {
@@ -210,7 +210,7 @@ int train() {
     }
 #endif
     solver_param.set_device_id(gpus[0]);
-    Caffe::SetDevice(gpus[0]);
+    Caffe::SetDevice(gpus[0]);//fang:record device id
     Caffe::set_mode(Caffe::GPU);
     Caffe::set_solver_count(gpus.size());
   }
@@ -226,6 +226,9 @@ int train() {
     solver_param.add_weights(FLAGS_weights);
   }
 
+  //fang: type a(b),定义了指向 caffe::Solver<float> 类型的智能指针 solver 并调用复制构造函数
+  //caffe::SolverRegistry<float>::CreateSolver(solver_param) 返回 static Solver<Dtype>*
+  //具体工厂返回的东西只能是 使用 REGISTER_SOLVER_CLASS 注册的其中一种--> 见 solver_factory.hpp
   shared_ptr<caffe::Solver<float> >
       solver(caffe::SolverRegistry<float>::CreateSolver(solver_param));
 
@@ -245,7 +248,7 @@ int train() {
     LOG(FATAL) << "Multi-GPU execution not available - rebuild with USE_NCCL";
 #endif
   } else {
-    solver->Solve();
+    solver->Solve();	//fang,开始训练,会更新权重参数
   }
   LOG(INFO) << "Optimization Done.";
   return 0;
@@ -276,8 +279,8 @@ int test() {
     Caffe::set_mode(Caffe::CPU);
   }
   // Instantiate the caffe net.
-  Net<float> caffe_net(FLAGS_model, caffe::TEST, FLAGS_level, &stages);
-  caffe_net.CopyTrainedLayersFrom(FLAGS_weights);
+  Net<float> caffe_net(FLAGS_model, caffe::TEST, FLAGS_level, &stages);	//fang: Net:Net()--> Net::Init()
+  caffe_net.CopyTrainedLayersFrom(FLAGS_weights);	//fang
   LOG(INFO) << "Running for " << FLAGS_iterations << " iterations.";
 
   vector<int> test_score_output_id;
@@ -286,7 +289,7 @@ int test() {
   for (int i = 0; i < FLAGS_iterations; ++i) {
     float iter_loss;
     const vector<Blob<float>*>& result =
-        caffe_net.Forward(&iter_loss);
+        caffe_net.Forward(&iter_loss);	//fang
     loss += iter_loss;
     int idx = 0;
     for (int j = 0; j < result.size(); ++j) {
@@ -436,7 +439,7 @@ int main(int argc, char** argv) {
 #ifdef WITH_PYTHON_LAYER
     try {
 #endif
-      return GetBrewFunction(caffe::string(argv[1]))();
+      return GetBrewFunction(caffe::string(argv[1]))();	//train()通过 RegisterBrewFunction(train); 被调用
 #ifdef WITH_PYTHON_LAYER
     } catch (bp::error_already_set) {
       PyErr_Print();

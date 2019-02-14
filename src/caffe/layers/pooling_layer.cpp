@@ -150,7 +150,7 @@ void PoolingLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   // Different pooling methods. We explicitly do the switch outside the for
   // loop to save time, although this results in more code.
   switch (this->layer_param_.pooling_param().pool()) {
-  case PoolingParameter_PoolMethod_MAX:
+  case PoolingParameter_PoolMethod_MAX:	//fang: max poolomg
     // Initialize
     if (use_top_mask) {
       top_mask = top[1]->mutable_cpu_data();
@@ -198,7 +198,7 @@ void PoolingLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       }
     }
     break;
-  case PoolingParameter_PoolMethod_AVE:
+  case PoolingParameter_PoolMethod_AVE:	//fang: mean pooling
     for (int i = 0; i < top_count; ++i) {
       top_data[i] = 0;
     }

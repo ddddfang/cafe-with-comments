@@ -35,9 +35,9 @@ void Blob<Dtype>::Reshape(const vector<int>& shape) {
     }
     count_ *= shape[i];
     shape_[i] = shape[i];
-    shape_data[i] = shape[i];
+    shape_data[i] = shape[i];	//就只是存贮了blob的形状信息啊,比如这个blob是二维的,那么 shape_data_[0]=h,shape_data_[1]=w
   }
-  if (count_ > capacity_) {
+  if (count_ > capacity_) {	//capacity_初始化为0,capacity_ 记录历史 SyncedMemory 分配情况,避免频繁反复分配/释放 SyncedMemory
     capacity_ = count_;
     data_.reset(new SyncedMemory(capacity_ * sizeof(Dtype)));
     diff_.reset(new SyncedMemory(capacity_ * sizeof(Dtype)));
@@ -430,7 +430,7 @@ bool Blob<Dtype>::ShapeEquals(const BlobProto& other) {
 }
 
 template <typename Dtype>
-void Blob<Dtype>::CopyFrom(const Blob& source, bool copy_diff, bool reshape) {
+void Blob<Dtype>::CopyFrom(const Blob& source, bool copy_diff, bool reshape) {	//fang:看起来就是在 net的输入端填充 net_input_blobs_[i]时会用到
   if (source.count() != count_ || source.shape() != shape_) {
     if (reshape) {
       ReshapeLike(source);

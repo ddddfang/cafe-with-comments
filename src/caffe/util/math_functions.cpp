@@ -17,7 +17,7 @@ void caffe_cpu_gemm<float>(const CBLAS_TRANSPOSE TransA,
   int lda = (TransA == CblasNoTrans) ? K : M;
   int ldb = (TransB == CblasNoTrans) ? N : K;
   cblas_sgemm(CblasRowMajor, TransA, TransB, M, N, K, alpha, A, lda, B,
-      ldb, beta, C, N);
+      ldb, beta, C, N);	//alpha * op(A) * op(B) + beta * C
 }
 
 template<>
@@ -106,7 +106,7 @@ template void caffe_copy<double>(const int N, const double* X, double* Y);
 
 template <>
 void caffe_scal<float>(const int N, const float alpha, float *X) {
-  cblas_sscal(N, alpha, X, 1);
+  cblas_sscal(N, alpha, X, 1);	//fang: X = alpha * X, N 为 X 中 element 的个数, blas 是用于 矩阵和向量运算的标准库,NVIDIA还提供了提供了矩阵运算库cublas
 }
 
 template <>

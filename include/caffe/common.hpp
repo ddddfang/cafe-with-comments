@@ -106,7 +106,7 @@ class Caffe {
   // Thread local context for Caffe. Moved to common.cpp instead of
   // including boost/thread.hpp to avoid a boost/NVCC issues (#1009, #1010)
   // on OSX. Also fails on Linux with CUDA 7.0.18.
-  static Caffe& Get();
+  static Caffe& Get();	//fang: 通过get() new Caffe()返回单实例(注意new 只可以由本类的成员函数调用了,因为构造函数是私有的)
 
   enum Brew { CPU, GPU };
 
@@ -183,7 +183,7 @@ class Caffe {
 
  private:
   // The private constructor to avoid duplicate instantiation.
-  Caffe();
+  Caffe();	//这里这样是防止其他类 new Caffe
 
   DISABLE_COPY_AND_ASSIGN(Caffe);
 };

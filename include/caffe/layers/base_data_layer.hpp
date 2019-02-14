@@ -33,9 +33,9 @@ class BaseDataLayer : public Layer<Dtype> {
       const vector<Blob<Dtype>*>& top) {}
 
   virtual void Backward_cpu(const vector<Blob<Dtype>*>& top,
-      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {}
+      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {}	//fang:这里给出一个空实现
   virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
-      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {}
+      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {}	//fang:这里给出一个空实现
 
  protected:
   TransformationParameter transform_param_;
@@ -70,8 +70,8 @@ class BasePrefetchingDataLayer :
   virtual void load_batch(Batch<Dtype>* batch) = 0;
 
   vector<shared_ptr<Batch<Dtype> > > prefetch_;
-  BlockingQueue<Batch<Dtype>*> prefetch_free_;
-  BlockingQueue<Batch<Dtype>*> prefetch_full_;
+  BlockingQueue<Batch<Dtype>*> prefetch_free_;	//BlockingQueue free 链表(大小由 DataParameter 中的 prefetch 定,默认 4 batch),将从中摘取 batch 用于填充
+  BlockingQueue<Batch<Dtype>*> prefetch_full_;	//BlockingQueue inuse 链表(大小由 DataParameter 中的 prefetch 定,默认 4 batch),填充好的 batch 添加到其中
   Batch<Dtype>* prefetch_current_;
 
   Blob<Dtype> transformed_data_;

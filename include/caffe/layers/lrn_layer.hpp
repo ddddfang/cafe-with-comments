@@ -56,10 +56,10 @@ class LRNLayer : public Layer<Dtype> {
   virtual void WithinChannelBackward(const vector<Blob<Dtype>*>& top,
       const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom);
 
-  int size_;
-  int pre_pad_;
-  Dtype alpha_;
-  Dtype beta_;
+  int size_;	//这就是local size,如果是 ACROSS_CHANNELS,就是 size_ * 1 * 1,如果是 WITHIN_CHANNEL,就是 1*size_*size_
+  int pre_pad_;	//补0时候用到的
+  Dtype alpha_;	//
+  Dtype beta_;	//
   Dtype k_;
   int num_;
   int channels_;

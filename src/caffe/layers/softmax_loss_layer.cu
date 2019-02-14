@@ -22,7 +22,7 @@ __global__ void SoftmaxLossForwardGPU(const int nthreads,
       counts[index] = 0;
     } else {
       loss[index] = -log(max(prob_data[n * dim + label_value * spatial_dim + s],
-                      Dtype(FLT_MIN)));
+                      Dtype(FLT_MIN)));	//dim=10,  spatial_dim = inner_num_=1
       counts[index] = 1;
     }
   }
@@ -34,8 +34,8 @@ void SoftmaxWithLossLayer<Dtype>::Forward_gpu(
   softmax_layer_->Forward(softmax_bottom_vec_, softmax_top_vec_);
   const Dtype* prob_data = prob_.gpu_data();
   const Dtype* label = bottom[1]->gpu_data();
-  const int dim = prob_.count() / outer_num_;
-  const int nthreads = outer_num_ * inner_num_;
+  const int dim = prob_.count() / outer_num_;	//dim=10
+  const int nthreads = outer_num_ * inner_num_;	//outer_num_=100,100次测算
   // Since this memory is not used for anything, we use it here to avoid having
   // to allocate new GPU memory to accumulate intermediate results.
   Dtype* loss_data = bottom[0]->mutable_gpu_diff();
@@ -83,7 +83,7 @@ __global__ void SoftmaxLossBackwardGPU(const int nthreads, const Dtype* top,
       }
       counts[index] = 0;
     } else {
-      bottom_diff[n * dim + label_value * spatial_dim + s] -= 1;
+      bottom_diff[n * dim + label_value * spatial_dim + s] -= 1;//在k==y的地方把梯度改为: prob_data-1,(其他地方是 prob_data)
       counts[index] = 1;
     }
   }

@@ -10,14 +10,14 @@ template <typename Dtype>
 void SoftmaxLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   softmax_axis_ =
-      bottom[0]->CanonicalAxisIndex(this->layer_param_.softmax_param().axis());
+      bottom[0]->CanonicalAxisIndex(this->layer_param_.softmax_param().axis());	//axis 默认是1
   top[0]->ReshapeLike(*bottom[0]);
   vector<int> mult_dims(1, bottom[0]->shape(softmax_axis_));
   sum_multiplier_.Reshape(mult_dims);
   Dtype* multiplier_data = sum_multiplier_.mutable_cpu_data();
   caffe_set(sum_multiplier_.count(), Dtype(1), multiplier_data);
-  outer_num_ = bottom[0]->count(0, softmax_axis_);
-  inner_num_ = bottom[0]->count(softmax_axis_ + 1);
+  outer_num_ = bottom[0]->count(0, softmax_axis_);	//n*c
+  inner_num_ = bottom[0]->count(softmax_axis_ + 1);	//h*w*...
   vector<int> scale_dims = bottom[0]->shape();
   scale_dims[softmax_axis_] = 1;
   scale_.Reshape(scale_dims);
@@ -34,26 +34,26 @@ void SoftmaxLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
   caffe_copy(bottom[0]->count(), bottom_data, top_data);
   // We need to subtract the max to avoid numerical issues, compute the exp,
   // and then normalize.
-  for (int i = 0; i < outer_num_; ++i) {
+  for (int i = 0; i < outer_num_; ++i) {	//遍历bottom_data查找最大值，存入scale_data
     // initialize scale_data to the first plane
-    caffe_copy(inner_num_, bottom_data + i * dim, scale_data);
+    caffe_copy(inner_num_, bottom_data + i * dim, scale_data);	//初始化scale_data为bottom_data首元素
     for (int j = 0; j < channels; j++) {
       for (int k = 0; k < inner_num_; k++) {
         scale_data[k] = std::max(scale_data[k],
-            bottom_data[i * dim + j * inner_num_ + k]);
+            bottom_data[i * dim + j * inner_num_ + k]);			//查找最大值，存入scale_data
       }
     }
     // subtraction
     caffe_cpu_gemm<Dtype>(CblasNoTrans, CblasNoTrans, channels, inner_num_,
-        1, -1., sum_multiplier_.cpu_data(), scale_data, 1., top_data);
+        1, -1., sum_multiplier_.cpu_data(), scale_data, 1., top_data);	//top_data = bottom_data - max(bottom_data)(主要是防止溢出)
     // exponentiation
-    caffe_exp<Dtype>(dim, top_data, top_data);
+    caffe_exp<Dtype>(dim, top_data, top_data);					//exp求幂
     // sum after exp
     caffe_cpu_gemv<Dtype>(CblasTrans, channels, inner_num_, 1.,
-        top_data, sum_multiplier_.cpu_data(), 0., scale_data);
+        top_data, sum_multiplier_.cpu_data(), 0., scale_data);	//累加求和，存放在scale_data中
     // division
     for (int j = 0; j < channels; j++) {
-      caffe_div(inner_num_, top_data, scale_data, top_data);
+      caffe_div(inner_num_, top_data, scale_data, top_data);	//top_data = top_data / scale_data
       top_data += inner_num_;
     }
   }

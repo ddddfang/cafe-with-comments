@@ -55,7 +55,7 @@ class Solver {
   // The main entry of the solver function. In default, iter will be zero. Pass
   // in a non-zero iter number to resume training for a pre-trained net.
   virtual void Solve(const char* resume_file = NULL);
-  inline void Solve(const string& resume_file) { Solve(resume_file.c_str()); }
+  inline void Solve(const string& resume_file) { Solve(resume_file.c_str()); }		//fang:将会在 caffe.cpp 中的 train() 中被调用
   void Step(int iters);
   // The Restore method simply dispatches to one of the
   // RestoreSolverStateFrom___ protected methods. You should implement these
@@ -95,7 +95,7 @@ class Solver {
   virtual inline const char* type() const { return ""; }
 
   // Make and apply the update value for the current iteration.
-  virtual void ApplyUpdate() = 0;
+  virtual void ApplyUpdate() = 0;	//fang: 不同的Solver子类会实现不同的ApplyUpdate函数
 
  protected:
   string SnapshotFilename(const string& extension);
@@ -113,8 +113,8 @@ class Solver {
   SolverParameter param_;
   int iter_;
   int current_step_;
-  shared_ptr<Net<Dtype> > net_;
-  vector<shared_ptr<Net<Dtype> > > test_nets_;
+  shared_ptr<Net<Dtype> > net_;					//fang: 指向训练网络的指针
+  vector<shared_ptr<Net<Dtype> > > test_nets_;	//fang: 指向测试网络的指针组,测试网络看起来可以有多个
   vector<Callback*> callbacks_;
   vector<Dtype> losses_;
   Dtype smoothed_loss_;

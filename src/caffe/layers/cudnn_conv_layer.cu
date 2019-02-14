@@ -16,7 +16,7 @@ void CuDNNConvolutionLayer<Dtype>::Forward_gpu(
     Dtype* top_data = top[i]->mutable_gpu_data();
 
     // Forward through cuDNN in parallel over groups.
-    for (int g = 0; g < this->group_; g++) {
+    for (int g = 0; g < this->group_; g++) {	//fang:group_ 是继承自 BaseConvolutionLayer 的group_,即卷积参数 group
       // Filters.
       CUDNN_CHECK(cudnnConvolutionForward(handle_[g],
             cudnn::dataType<Dtype>::one,

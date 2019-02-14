@@ -85,7 +85,7 @@ class BaseConvolutionLayer : public Layer<Dtype> {
   int channel_axis_;
   int num_;
   int channels_;
-  int group_;
+  int group_;	//fang: 将卷积操作放在多个 cudaStream_t 中执行,提高并行性能,但默认 group 为 1，必须可以被 num_output_ 和 channels_ 整除
   int out_spatial_dim_;
   int weight_offset_;
   int num_output_;

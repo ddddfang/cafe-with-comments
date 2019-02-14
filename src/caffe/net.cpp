@@ -49,58 +49,65 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
   // Filter layers based on their include/exclude rules and
   // the current NetState.
   NetParameter filtered_param;
-  FilterNet(in_param, &filtered_param);
+  FilterNet(in_param, &filtered_param);		//fang:过滤和校验参数,模型参数文件 (*.prototxt),过滤掉 非本 phase 的 layers(这样 TEST 阶段的layer不会包含在 TRAIN 网络中)
   LOG_IF(INFO, Caffe::root_solver())
       << "Initializing net from parameters: " << std::endl
       << filtered_param.DebugString();
   // Create a copy of filtered_param with splits added where necessary.
   NetParameter param;
-  InsertSplits(filtered_param, &param);
+  InsertSplits(filtered_param, &param);			//fang: 插入split层 (对于底层一个输出blob对应多个上层的情况，则要在加入分裂层)
   // Basically, build all the layers and set up their connections.
   name_ = param.name();
   map<string, int> blob_name_to_idx;
   set<string> available_blobs;
   memory_used_ = 0;
+
   // For each layer, set up its input and output
-  bottom_vecs_.resize(param.layer_size());
-  top_vecs_.resize(param.layer_size());
-  bottom_id_vecs_.resize(param.layer_size());
-  param_id_vecs_.resize(param.layer_size());
-  top_id_vecs_.resize(param.layer_size());
+  // param.input_size()返回输入层blob的个数; param.input(i)表示第i个blob的名字;param.layers_size()返回网络的层数
+  bottom_vecs_.resize(param.layer_size());		//fang: 用于存放网络各个层的 bottom blob 的指针
+  top_vecs_.resize(param.layer_size());			//fang: 用于存放网络各个层的 top blob 的指针
+
+  bottom_id_vecs_.resize(param.layer_size());	//fang: 用于存放网络各个层的 bottom blob 位于 blobs[] 的index
+  param_id_vecs_.resize(param.layer_size());	//fang: 用于存放网络各个层的 参数 blob 位于 blobs[] 的index
+  top_id_vecs_.resize(param.layer_size());		//fang: 用于存放网络各个层的 top blob 位于 blobs[] 的index
   bottom_need_backward_.resize(param.layer_size());
-  for (int layer_id = 0; layer_id < param.layer_size(); ++layer_id) {
-    // Inherit phase from net if unset.
+
+  for (int layer_id = 0; layer_id < param.layer_size(); ++layer_id) {	//fang: 遍历本 net 包含的所有 layer
+    // Inherit phase from net if unset. 若当前层没有设置 phase,就设置为 net 的 phase
     if (!param.layer(layer_id).has_phase()) {
       param.mutable_layer(layer_id)->set_phase(phase_);
     }
     // Setup layer.
-    const LayerParameter& layer_param = param.layer(layer_id);
+    const LayerParameter& layer_param = param.layer(layer_id);          //fang: param.layer(i) 获取此 layer 的参数
+
     if (layer_param.propagate_down_size() > 0) {
+      //检查 LayerParameter 类型 propagate_down 成员个数(ptototxt 中设置的 propagate_down: xx,要么是0 要么为 bottom blob 个数)
+	  //代表当前 diff of param blob 是否反向传播
       CHECK_EQ(layer_param.propagate_down_size(),
           layer_param.bottom_size())
           << "propagate_down param must be specified "
           << "either 0 or bottom_size times ";
     }
-    layers_.push_back(LayerRegistry<Dtype>::CreateLayer(layer_param));
-    layer_names_.push_back(layer_param.name());
-    LOG_IF(INFO, Caffe::root_solver())
-        << "Creating Layer " << layer_param.name();
+    layers_.push_back(LayerRegistry<Dtype>::CreateLayer(layer_param));	//fang: 根据此layer参数 CreateLayer, (layers_ 记录 layer,
+    layer_names_.push_back(layer_param.name());                         //      layer_names_ 记录 layer name)
+    LOG_IF(INFO, Caffe::root_solver()) << "Creating Layer " << layer_param.name();
     bool need_backward = false;
 
-    // Figure out this layer's input and output
-    for (int bottom_id = 0; bottom_id < layer_param.bottom_size();
-         ++bottom_id) {
-      const int blob_id = AppendBottom(param, layer_id, bottom_id,
-                                       &available_blobs, &blob_name_to_idx);
+    // Figure out this layer's input and output. 
+	//fang:第一层通常是数据layer,只有top blob,所以这里刚开始通常不会进入 会先进入下面的 AppendTop()
+	//每个layer负责本layer 的 top blob 的实际创建,bottom blob 是用的上一个layer的 top blob
+    for (int bottom_id = 0; bottom_id < layer_param.bottom_size();++bottom_id) {	//fang: 创建本层的 bottom blob, 一个 layer 可能有多个输入 blob
+      const int blob_id = AppendBottom(param, layer_id, bottom_id, &available_blobs, &blob_name_to_idx);
       // If a blob needs backward, this layer should provide it.
-      need_backward |= blob_need_backward_[blob_id];
+      need_backward |= blob_need_backward_[blob_id];	//小心 AppendBottom 可能会改写 blob_need_backward_
     }
-    int num_top = layer_param.top_size();
-    for (int top_id = 0; top_id < num_top; ++top_id) {
+
+    int num_top = layer_param.top_size();	//fang: LayerParameter 里面有一个字段 repeated string top = 4;这里应该就是拿到 到底实际定义了多少 repeated 量
+    for (int top_id = 0; top_id < num_top; ++top_id) {								//fang: 创建本层的 top blob
       AppendTop(param, layer_id, top_id, &available_blobs, &blob_name_to_idx);
       // Collect Input layer tops as Net inputs.
-      if (layer_param.type() == "Input") {
-        const int blob_id = blobs_.size() - 1;
+      if (layer_param.type() == "Input") {		//layer 是input的话,此处会做特殊处理
+        const int blob_id = blobs_.size() - 1;	//这个 blob_id 其实不就是你刚刚 AppendTop 时new出来的 blob 的 id 嘛
         net_input_blob_indices_.push_back(blob_id);
         net_input_blobs_.push_back(blobs_[blob_id].get());
       }
@@ -109,9 +116,8 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
     // specified fewer than the required number (as specified by
     // ExactNumTopBlobs() or MinTopBlobs()), allocate them here.
     Layer<Dtype>* layer = layers_[layer_id].get();
-    if (layer->AutoTopBlobs()) {
-      const int needed_num_top =
-          std::max(layer->MinTopBlobs(), layer->ExactNumTopBlobs());
+    if (layer->AutoTopBlobs()) {	//num_top 是参数里面定义了的 top个数,但似乎比实际需要的要少,所以auto模式下,就自动来补充,只要我们的 prototxt 合法,就不应该进下面的 for
+      const int needed_num_top = std::max(layer->MinTopBlobs(), layer->ExactNumTopBlobs());	//这是每一层认为自己应该出来多少 top
       for (; num_top < needed_num_top; ++num_top) {
         // Add "anonymous" top blobs -- do not modify available_blobs or
         // blob_name_to_idx as we don't want these blobs to be usable as input
@@ -120,41 +126,39 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
       }
     }
     // After this layer is connected, set it up.
-    layers_[layer_id]->SetUp(bottom_vecs_[layer_id], top_vecs_[layer_id]);
-    LOG_IF(INFO, Caffe::root_solver())
-        << "Setting up " << layer_names_[layer_id];
+    //====> fang: 调用每一层的 layers_[i]->SetUp()
+    layers_[layer_id]->SetUp(bottom_vecs_[layer_id], top_vecs_[layer_id]);  //fang: 会为 AppendTop() 中创建的 blob 分配内存空间
+    LOG_IF(INFO, Caffe::root_solver()) << "Setting up " << layer_names_[layer_id];
+
     for (int top_id = 0; top_id < top_vecs_[layer_id].size(); ++top_id) {
       if (blob_loss_weights_.size() <= top_id_vecs_[layer_id][top_id]) {
         blob_loss_weights_.resize(top_id_vecs_[layer_id][top_id] + 1, Dtype(0));
       }
-      blob_loss_weights_[top_id_vecs_[layer_id][top_id]] = layer->loss(top_id);
-      LOG_IF(INFO, Caffe::root_solver())
-          << "Top shape: " << top_vecs_[layer_id][top_id]->shape_string();
+      blob_loss_weights_[top_id_vecs_[layer_id][top_id]] = layer->loss(top_id);	//fang:调用模板类 layer的loss函数返回 loss_weight
+      LOG_IF(INFO, Caffe::root_solver()) << "Top shape: " << top_vecs_[layer_id][top_id]->shape_string();
       if (layer->loss(top_id)) {
-        LOG_IF(INFO, Caffe::root_solver())
-            << "    with loss weight " << layer->loss(top_id);
+        LOG_IF(INFO, Caffe::root_solver()) << "    with loss weight " << layer->loss(top_id);
       }
-      memory_used_ += top_vecs_[layer_id][top_id]->count();
+      memory_used_ += top_vecs_[layer_id][top_id]->count();	//计算所需内存
     }
-    LOG_IF(INFO, Caffe::root_solver())
-        << "Memory required for data: " << memory_used_ * sizeof(Dtype);
-    const int param_size = layer_param.param_size();
-    const int num_param_blobs = layers_[layer_id]->blobs().size();
-    CHECK_LE(param_size, num_param_blobs)
-        << "Too many params specified for layer " << layer_param.name();
+    LOG_IF(INFO, Caffe::root_solver()) << "Memory required for data: " << memory_used_ * sizeof(Dtype);
+
+    //fang:对每一层 param blob 的处理
+    const int param_size = layer_param.param_size();	//fang: ParamSpec 成员数量,也就是 权重参数个数(blob 个数),eg.w 和 b 两个参数的话此处为 2
+    const int num_param_blobs = layers_[layer_id]->blobs().size();	//fang: 本层最多能容纳的参数个数
+    CHECK_LE(param_size, num_param_blobs) << "Too many params specified for layer " << layer_param.name();
     ParamSpec default_param_spec;
     for (int param_id = 0; param_id < num_param_blobs; ++param_id) {
-      const ParamSpec* param_spec = (param_id < param_size) ?
-          &layer_param.param(param_id) : &default_param_spec;
-      const bool param_need_backward = param_spec->lr_mult() != 0;
-      need_backward |= param_need_backward;
-      layers_[layer_id]->set_param_propagate_down(param_id,
-                                                  param_need_backward);
+      const ParamSpec* param_spec = (param_id < param_size) ? &layer_param.param(param_id) : &default_param_spec;
+      const bool param_need_backward = param_spec->lr_mult() != 0;	//fang:如果 prototxt 中将 lr 置为0,即关掉,该层参数便不再更新 
+      need_backward |= param_need_backward;		//fang:参数需要更新,那么本层就需要更新
+      layers_[layer_id]->set_param_propagate_down(param_id, param_need_backward);
     }
-    for (int param_id = 0; param_id < num_param_blobs; ++param_id) {
-      AppendParam(param, layer_id, param_id);
+    for (int param_id = 0; param_id < num_param_blobs; ++param_id) {//relu 等 没有param blob 的层此处不会进入
+      AppendParam(param, layer_id, param_id);	//fang: 吧每一层的训练参数与 网络变量 learnable_params_ 绑定
     }
     // Finally, set the backward flag
+	//之前 appendTop 中将false压入 blob_need_backward_ ,此处若 layer_need_backward_ 则会更新 blob_need_backward_
     layer_need_backward_.push_back(need_backward);
     if (need_backward) {
       for (int top_id = 0; top_id < top_id_vecs_[layer_id].size(); ++top_id) {
@@ -162,6 +166,12 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
       }
     }
   }
+  //fang: 走到这里,各层都已经被创建并启动
+  //前面关于 backwards 设置都是按照前向顺序来的,下面按照反向顺序进行修正
+  //一个layer是否需要 backward computation:
+  //(1) 该layer的top blob是否参与loss的计算
+  //(2) 该layer的bottom blob是否需要 backward computation(eg.data layer 就不需要)
+
   // Go through the net backwards to determine which blobs contribute to the
   // loss.  We can skip backward computation for blobs that don't contribute
   // to the loss.
@@ -171,12 +181,11 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
   set<string> blobs_under_loss;
   set<string> blobs_skip_backp;
   for (int layer_id = layers_.size() - 1; layer_id >= 0; --layer_id) {
-    bool layer_contributes_loss = false;
+    bool layer_contributes_loss = false;	//此layer是否参与loss的计算
     bool layer_skip_propagate_down = true;
     for (int top_id = 0; top_id < top_vecs_[layer_id].size(); ++top_id) {
       const string& blob_name = blob_names_[top_id_vecs_[layer_id][top_id]];
-      if (layers_[layer_id]->loss(top_id) ||
-          (blobs_under_loss.find(blob_name) != blobs_under_loss.end())) {
+      if (layers_[layer_id]->loss(top_id) || (blobs_under_loss.find(blob_name) != blobs_under_loss.end())) {
         layer_contributes_loss = true;
       }
       if (blobs_skip_backp.find(blob_name) == blobs_skip_backp.end()) {
@@ -189,8 +198,7 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
     // don't need backpropagation
     if (layer_need_backward_[layer_id] && layer_skip_propagate_down) {
       layer_need_backward_[layer_id] = false;
-      for (int bottom_id = 0; bottom_id < bottom_vecs_[layer_id].size();
-               ++bottom_id) {
+      for (int bottom_id = 0; bottom_id < bottom_vecs_[layer_id].size(); ++bottom_id) {
         bottom_need_backward_[layer_id][bottom_id] = false;
       }
     }
@@ -199,12 +207,11 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
       if (layer_need_backward_[layer_id]) {
         LOG(INFO) << layer_names_[layer_id] << " needs backward computation.";
       } else {
-        LOG(INFO) << layer_names_[layer_id]
-            << " does not need backward computation.";
+        LOG(INFO) << layer_names_[layer_id] << " does not need backward computation.";
       }
     }
-    for (int bottom_id = 0; bottom_id < bottom_vecs_[layer_id].size();
-         ++bottom_id) {
+	//fang:修正前向设置的结果
+    for (int bottom_id = 0; bottom_id < bottom_vecs_[layer_id].size(); ++bottom_id) {
       if (layer_contributes_loss) {
         const string& blob_name =
             blob_names_[bottom_id_vecs_[layer_id][bottom_id]];
@@ -272,7 +279,7 @@ void Net<Dtype>::FilterNet(const NetParameter& param,
     // only excluded if it meets one of the exclude rules.
     bool layer_included = (layer_param.include_size() == 0);
     for (int j = 0; layer_included && j < layer_param.exclude_size(); ++j) {
-      if (StateMeetsRule(net_state, layer_param.exclude(j), layer_name)) {
+      if (StateMeetsRule(net_state, layer_param.exclude(j), layer_name)) {	//fang
         layer_included = false;
       }
     }
@@ -381,36 +388,38 @@ void Net<Dtype>::AppendTop(const NetParameter& param, const int layer_id,
     if (Caffe::root_solver()) {
       LOG(INFO) << layer_param->name() << " -> " << blob_name;
     }
-    shared_ptr<Blob<Dtype> > blob_pointer(new Blob<Dtype>());
-    const int blob_id = blobs_.size();
-    blobs_.push_back(blob_pointer);
-    blob_names_.push_back(blob_name);
-    blob_need_backward_.push_back(false);
-    if (blob_name_to_idx) { (*blob_name_to_idx)[blob_name] = blob_id; }
+    shared_ptr<Blob<Dtype> > blob_pointer(new Blob<Dtype>());	//fang: blob 就是在这里被真正创建, top 和 bottom 协商好统一由top创建
+    const int blob_id = blobs_.size();	//其实就是vector的末尾
+    blobs_.push_back(blob_pointer);			//fang:就是这里将真正创建出来的 blobs(的指针) 压入 blobs_ 中
+    blob_names_.push_back(blob_name);		//
+    blob_need_backward_.push_back(false);	//
+    if (blob_name_to_idx) { (*blob_name_to_idx)[blob_name] = blob_id; }	//插入到 键值对 集合中, AppendBottom 后边会用到
+
+    //fang: ========>Forward()参数之2 ===> top_vecs_[i]
     top_id_vecs_[layer_id].push_back(blob_id);
     top_vecs_[layer_id].push_back(blob_pointer.get());
   }
-  if (available_blobs) { available_blobs->insert(blob_name); }
+  if (available_blobs) { available_blobs->insert(blob_name); }	//top blob 的名字会被下一层的 bottom blob 引用到
 }
 
 // Helper for Net::Init: add a new bottom blob to the net.
 template <typename Dtype>
-int Net<Dtype>::AppendBottom(const NetParameter& param, const int layer_id,
-    const int bottom_id, set<string>* available_blobs,
-    map<string, int>* blob_name_to_idx) {
-  const LayerParameter& layer_param = param.layer(layer_id);
-  const string& blob_name = layer_param.bottom(bottom_id);
-  if (available_blobs->find(blob_name) == available_blobs->end()) {
-    LOG(FATAL) << "Unknown bottom blob '" << blob_name << "' (layer '"
-               << layer_param.name() << "', bottom index " << bottom_id << ")";
+int Net<Dtype>::AppendBottom(	const NetParameter& param, const int layer_id,
+								const int bottom_id, set<string>* available_blobs,
+								map<string, int>* blob_name_to_idx) {
+  const LayerParameter& layer_param = param.layer(layer_id);		//从 NetParameter 获取 LayerParameter
+  const string& blob_name = layer_param.bottom(bottom_id);			//取出 blob_name 用于校验
+  if (available_blobs->find(blob_name) == available_blobs->end()) {	//blob_name 应该肯定和前一层 exactly 一样
+    LOG(FATAL) << "Unknown bottom blob '" << blob_name << "' (layer '" << layer_param.name() << "', bottom index " << bottom_id << ")";
   }
-  const int blob_id = (*blob_name_to_idx)[blob_name];
-  LOG_IF(INFO, Caffe::root_solver())
-      << layer_names_[layer_id] << " <- " << blob_name;
-  bottom_vecs_[layer_id].push_back(blobs_[blob_id].get());
-  bottom_id_vecs_[layer_id].push_back(blob_id);
-  available_blobs->erase(blob_name);
-  bool need_backward = blob_need_backward_[blob_id];
+  const int blob_id = (*blob_name_to_idx)[blob_name];	//fang:(key-val)中的 val 是 "此 blob 在 blobs_[] 中的index", blobs_[] 中都是指向实际 blob 的指针
+														//key 不存在的话会创建一个 pair 并调用默认构造函数(available_blobs->find 保证会存在的)
+  LOG_IF(INFO, Caffe::root_solver()) << layer_names_[layer_id] << " <- " << blob_name;
+  //fang: ========> Forward()参数之1 ===> bottom_vecs_[i]
+  bottom_vecs_[layer_id].push_back(blobs_[blob_id].get());	//每个 bottom_vecs_[i] 记录了一个 layer 的所有输入 blobs (bottom blobs) 的指针
+  bottom_id_vecs_[layer_id].push_back(blob_id);				//每个 bottom_id_vecs_[i] 记录了一个 layer 的所有输入 blobs (bottom blobs) 在 blobs_[] 中的index
+  available_blobs->erase(blob_name);	//
+  bool need_backward = blob_need_backward_[blob_id];	//小心这个 blob_need_backward_ 其实是先被 AppendTop 初始化的
   // Check if the backpropagation on bottom_id should be skipped
   if (layer_param.propagate_down_size() > 0) {
     need_backward = layer_param.propagate_down(bottom_id);
@@ -420,8 +429,7 @@ int Net<Dtype>::AppendBottom(const NetParameter& param, const int layer_id,
 }
 
 template <typename Dtype>
-void Net<Dtype>::AppendParam(const NetParameter& param, const int layer_id,
-                             const int param_id) {
+void Net<Dtype>::AppendParam(const NetParameter& param, const int layer_id, const int param_id) {
   const LayerParameter& layer_param = layers_[layer_id]->layer_param();
   const int param_size = layer_param.param_size();
   string param_name =
@@ -450,7 +458,7 @@ void Net<Dtype>::AppendParam(const NetParameter& param, const int layer_id,
       param_names_index_[param_name] = net_param_id;
     }
     const int learnable_param_id = learnable_params_.size();
-    learnable_params_.push_back(params_[net_param_id].get());
+    learnable_params_.push_back(params_[net_param_id].get());	//=====>fang
     learnable_param_ids_.push_back(learnable_param_id);
     has_params_lr_.push_back(param_spec->has_lr_mult());
     has_params_decay_.push_back(param_spec->has_decay_mult());
@@ -515,18 +523,18 @@ void Net<Dtype>::AppendParam(const NetParameter& param, const int layer_id,
 }
 
 template <typename Dtype>
-Dtype Net<Dtype>::ForwardFromTo(int start, int end) {
+Dtype Net<Dtype>::ForwardFromTo(int start, int end) {	//fang: 前向过程,会把每一层的loss叠加起来
   CHECK_GE(start, 0);
   CHECK_LT(end, layers_.size());
   Dtype loss = 0;
   for (int i = start; i <= end; ++i) {
-    for (int c = 0; c < before_forward_.size(); ++c) {
+    for (int c = 0; c < before_forward_.size(); ++c) {	//fang:集中调用 Forward 前的 callback
       before_forward_[c]->run(i);
     }
     Dtype layer_loss = layers_[i]->Forward(bottom_vecs_[i], top_vecs_[i]);
     loss += layer_loss;
     if (debug_info_) { ForwardDebugInfo(i); }
-    for (int c = 0; c < after_forward_.size(); ++c) {
+    for (int c = 0; c < after_forward_.size(); ++c) {	//fang:集中调用 Forward 后的 callback
       after_forward_[c]->run(i);
     }
   }
@@ -534,12 +542,12 @@ Dtype Net<Dtype>::ForwardFromTo(int start, int end) {
 }
 
 template <typename Dtype>
-Dtype Net<Dtype>::ForwardFrom(int start) {
+Dtype Net<Dtype>::ForwardFrom(int start) {	//fang: 从某一层一直forward到最后一层
   return ForwardFromTo(start, layers_.size() - 1);
 }
 
 template <typename Dtype>
-Dtype Net<Dtype>::ForwardTo(int end) {
+Dtype Net<Dtype>::ForwardTo(int end) {		//fang: 从第一层一直forward到某一层
   return ForwardFromTo(0, end);
 }
 
@@ -550,12 +558,12 @@ const vector<Blob<Dtype>*>& Net<Dtype>::Forward(Dtype* loss) {
   } else {
     ForwardFromTo(0, layers_.size() - 1);
   }
-  return net_output_blobs_;
+  return net_output_blobs_;	//最终输出 blob
 }
 
 template <typename Dtype>
-const vector<Blob<Dtype>*>& Net<Dtype>::Forward(
-    const vector<Blob<Dtype>*> & bottom, Dtype* loss) {
+const vector<Blob<Dtype>*>& Net<Dtype>::Forward(	//目前看这个函数只是在 CheckGradientNet 函数中作为测试使用,其他地方都没有
+    const vector<Blob<Dtype>*> & bottom, Dtype* loss) {			//fang:这个forward 为供外面调用的接口,包含了拷贝输入 bottom blob
   LOG_EVERY_N(WARNING, 1000) << "DEPRECATED: Forward(bottom, loss) "
       << "will be removed in a future version. Use Forward(loss).";
   // Copy bottom to net bottoms
@@ -566,19 +574,21 @@ const vector<Blob<Dtype>*>& Net<Dtype>::Forward(
 }
 
 template <typename Dtype>
-void Net<Dtype>::BackwardFromTo(int start, int end) {
+void Net<Dtype>::BackwardFromTo(int start, int end) {	//fang: 后向过程
   CHECK_GE(end, 0);
   CHECK_LT(start, layers_.size());
   for (int i = start; i >= end; --i) {
-    for (int c = 0; c < before_backward_.size(); ++c) {
+    for (int c = 0; c < before_backward_.size(); ++c) {	//fang:集中调用 Backward 前的 callback
       before_backward_[c]->run(i);
     }
     if (layer_need_backward_[i]) {
-      layers_[i]->Backward(
-          top_vecs_[i], bottom_need_backward_[i], bottom_vecs_[i]);
+      /*fang: void Layer::Backward(	const vector<Blob<Dtype>*>& top, 
+      								const vector<bool>& propagate_down, 
+      								const vector<Blob<Dtype>*>& bottom) */
+      layers_[i]->Backward(top_vecs_[i], bottom_need_backward_[i], bottom_vecs_[i]);
       if (debug_info_) { BackwardDebugInfo(i); }
     }
-    for (int c = 0; c < after_backward_.size(); ++c) {
+    for (int c = 0; c < after_backward_.size(); ++c) {	//fang:集中调用 Backward 后的 callback
       after_backward_[c]->run(i);
     }
   }
@@ -706,7 +716,7 @@ void Net<Dtype>::BackwardTo(int end) {
 }
 
 template <typename Dtype>
-void Net<Dtype>::Backward() {
+void Net<Dtype>::Backward() {	//fang
   BackwardFromTo(layers_.size() - 1, 0);
   if (debug_info_) {
     Dtype asum_data = 0, asum_diff = 0, sumsq_data = 0, sumsq_diff = 0;
@@ -732,7 +742,7 @@ void Net<Dtype>::Reshape() {
 }
 
 template <typename Dtype>
-void Net<Dtype>::CopyTrainedLayersFrom(const NetParameter& param) {
+void Net<Dtype>::CopyTrainedLayersFrom(const NetParameter& param) {	//fang:from protobuf .caffemodel 文件拷贝权重参数,test or fine-tune
   int num_source_layers = param.layer_size();
   for (int i = 0; i < num_source_layers; ++i) {
     const LayerParameter& source_layer = param.layer(i);
@@ -764,7 +774,7 @@ void Net<Dtype>::CopyTrainedLayersFrom(const NetParameter& param) {
             << "copying from a saved net, rename the layer.";
       }
       const bool kReshape = false;
-      target_blobs[j]->FromProto(source_layer.blobs(j), kReshape);
+      target_blobs[j]->FromProto(source_layer.blobs(j), kReshape);	//fang:from protobuf .caffemodel 文件拷贝权重参数
     }
   }
 }
@@ -917,7 +927,7 @@ void Net<Dtype>::ToHDF5(const string& filename, bool write_diff) const {
 }
 
 template <typename Dtype>
-void Net<Dtype>::Update() {
+void Net<Dtype>::Update() {	//更新  params_ 中 blob 的值
   for (int i = 0; i < learnable_params_.size(); ++i) {
     learnable_params_[i]->Update();
   }

@@ -21,7 +21,7 @@ namespace caffe {
  * TODO(dox): more thorough description.
  */
 template <typename Dtype>
-class Blob {
+class Blob {	//fang: Blob本质是对SyncedMemory的再封装
  public:
   Blob()
        : data_(), diff_(), count_(0), capacity_(0) {}
@@ -68,11 +68,11 @@ class Blob {
    *        "canonicalized" using CanonicalAxisIndex.
    *        Dies on out of range index.
    */
-  inline int shape(int index) const {
+  inline int shape(int index) const {			//这是返回某一个轴的大小,eg. n=2 c=10 h=256 w=256,则 shape(0)=2,shape(1)=10,...
     return shape_[CanonicalAxisIndex(index)];
   }
-  inline int num_axes() const { return shape_.size(); }
-  inline int count() const { return count_; }
+  inline int num_axes() const { return shape_.size(); }	//返回轴的个数,eg. n c h w 则 num_axes()就是4, h w就是2, 就是 shape_的 size()
+  inline int count() const { return count_; }	//
 
   /**
    * @brief Compute the volume of a slice; i.e., the product of dimensions
@@ -82,7 +82,7 @@ class Blob {
    *
    * @param end_axis The first axis to exclude from the slice.
    */
-  inline int count(int start_axis, int end_axis) const {
+  inline int count(int start_axis, int end_axis) const {	//返回某几个轴空间的数据点个数,n=2 c=10 h=256 w=256,则 count(0,1)=2*10=20
     CHECK_LE(start_axis, end_axis);
     CHECK_GE(start_axis, 0);
     CHECK_GE(end_axis, 0);
@@ -110,12 +110,12 @@ class Blob {
    *
    * @param axis_index the axis index.
    *        If 0 <= index < num_axes(), return index.
-   *        If -num_axes <= index <= -1, return (num_axes() - (-index)),
+   *        If -num_axes <= index <= -1, return (num_axes() - (-index)),	//这里
    *        e.g., the last axis index (num_axes() - 1) if index == -1,
    *        the second to last if index == -2, etc.
    *        Dies on out of range index.
    */
-  inline int CanonicalAxisIndex(int axis_index) const {
+  inline int CanonicalAxisIndex(int axis_index) const {	//Canonical 权威的, axis 轴,轴心
     CHECK_GE(axis_index, -num_axes())
         << "axis " << axis_index << " out of range for " << num_axes()
         << "-D Blob with shape " << shape_string();
@@ -123,7 +123,7 @@ class Blob {
         << "axis " << axis_index << " out of range for " << num_axes()
         << "-D Blob with shape " << shape_string();
     if (axis_index < 0) {
-      return axis_index + num_axes();
+      return axis_index + num_axes();	//循环了啊,认为 axis_index 不可以 < -num_axes
     }
     return axis_index;
   }
@@ -151,7 +151,7 @@ class Blob {
   }
 
   inline int offset(const int n, const int c = 0, const int h = 0,
-      const int w = 0) const {
+      const int w = 0) const {	//计算某个逻辑四维形状上的点,位于实际一维buffer中的偏移
     CHECK_GE(n, 0);
     CHECK_LE(n, num());
     CHECK_GE(channels(), 0);
@@ -160,10 +160,11 @@ class Blob {
     CHECK_LE(h, height());
     CHECK_GE(width(), 0);
     CHECK_LE(w, width());
+	//fang: nchw + chw + hw + w
     return ((n * channels() + c) * height() + h) * width() + w;
   }
 
-  inline int offset(const vector<int>& indices) const {
+  inline int offset(const vector<int>& indices) const {	//和上面一样的,只是不局限于四维
     CHECK_LE(indices.size(), num_axes());
     int offset = 0;
     for (int i = 0; i < num_axes(); ++i) {
@@ -188,13 +189,11 @@ class Blob {
   void CopyFrom(const Blob<Dtype>& source, bool copy_diff = false,
       bool reshape = false);
 
-  inline Dtype data_at(const int n, const int c, const int h,
-      const int w) const {
+  inline Dtype data_at(const int n, const int c, const int h, const int w) const {
     return cpu_data()[offset(n, c, h, w)];
   }
 
-  inline Dtype diff_at(const int n, const int c, const int h,
-      const int w) const {
+  inline Dtype diff_at(const int n, const int c, const int h, const int w) const {
     return cpu_diff()[offset(n, c, h, w)];
   }
 
@@ -267,11 +266,13 @@ class Blob {
   bool ShapeEquals(const BlobProto& other);
 
  protected:
-  shared_ptr<SyncedMemory> data_;
-  shared_ptr<SyncedMemory> diff_;
-  shared_ptr<SyncedMemory> shape_data_;
-  vector<int> shape_;
-  int count_;
+  shared_ptr<SyncedMemory> data_;	//fang: 原始数据,使用SyncedMemory类进行数据存储
+  shared_ptr<SyncedMemory> diff_;	//梯度信息
+  shared_ptr<SyncedMemory> shape_data_;	//存储这个blob的形状信息,比如一个nchw的blob,那么 shape_data_ 指向的 SyncedMemory 其实就只有四个cpu data,
+  										//shape_data_[0]=n,shape_data_[1]=c,shape_data_[2]=h,shape_data_[3]=w
+  										//每一个layer setup 的时候会为参数blob分配空间,那里就会分配 shape_data_(而且貌似只需要cpu存一份就够了)
+  vector<int> shape_;	//blob 的维度，和 shape_data_ 内容一样啊,只是这个是blob管理的,shape_data_是防止 SyncedMemory 需要用到 blob 形状
+  int count_;						//blob的总容量, =n*c*h*w,(不一定是四维的)
   int capacity_;
 
   DISABLE_COPY_AND_ASSIGN(Blob);

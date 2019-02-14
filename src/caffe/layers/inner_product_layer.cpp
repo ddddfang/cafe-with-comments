@@ -8,47 +8,47 @@ namespace caffe {
 
 template <typename Dtype>
 void InnerProductLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
-      const vector<Blob<Dtype>*>& top) {
+      const vector<Blob<Dtype>*>& top) {	//权重和偏执占据的 blobs_,在此分配并初始化
   const int num_output = this->layer_param_.inner_product_param().num_output();
   bias_term_ = this->layer_param_.inner_product_param().bias_term();
   transpose_ = this->layer_param_.inner_product_param().transpose();
   N_ = num_output;
   const int axis = bottom[0]->CanonicalAxisIndex(
-      this->layer_param_.inner_product_param().axis());
+      this->layer_param_.inner_product_param().axis());	//axis default为 1,这是要隔开 batch 个数 和 真正的输入神经元个数
   // Dimensions starting from "axis" are "flattened" into a single
   // length K_ vector. For example, if bottom[0]'s shape is (N, C, H, W),
   // and axis == 1, N inner products with dimension CHW are performed.
-  K_ = bottom[0]->count(axis);
+  K_ = bottom[0]->count(axis);	//就应该是输入神经元的个数,即 c*h*w
   // Check if we need to set up the weights
   if (this->blobs_.size() > 0) {
     LOG(INFO) << "Skipping parameter initialization";
   } else {
     if (bias_term_) {
-      this->blobs_.resize(2);
+      this->blobs_.resize(2);	//如果有偏执,则会申请两块 blob,(blobs_ 是 blob 指针组成的 vector)
     } else {
-      this->blobs_.resize(1);
+      this->blobs_.resize(1);	//否则只申请权重的 blob
     }
     // Initialize the weights
     vector<int> weight_shape(2);
-    if (transpose_) {
-      weight_shape[0] = K_;
+    if (transpose_) {	//注意下面的 forward 的时候 transpose_ 为 true,使用的是 CblasNoTrans 参数....名字起的有点..
+      weight_shape[0] = K_;	//所以这里并没有颠倒
       weight_shape[1] = N_;
     } else {
       weight_shape[0] = N_;
       weight_shape[1] = K_;
     }
-    this->blobs_[0].reset(new Blob<Dtype>(weight_shape));
+    this->blobs_[0].reset(new Blob<Dtype>(weight_shape));	//blob会做reshape动作的,空间会分配好的,且形状被记录在cpu端
     // fill the weights
     shared_ptr<Filler<Dtype> > weight_filler(GetFiller<Dtype>(
         this->layer_param_.inner_product_param().weight_filler()));
-    weight_filler->Fill(this->blobs_[0].get());
+    weight_filler->Fill(this->blobs_[0].get());		//fang:进行权重的初始值填充,不是随便初始化的!用到了一些算法,eg. xavier
     // If necessary, initialize and fill the bias term
     if (bias_term_) {
       vector<int> bias_shape(1, N_);
-      this->blobs_[1].reset(new Blob<Dtype>(bias_shape));
+      this->blobs_[1].reset(new Blob<Dtype>(bias_shape));	//blob会做reshape动作的,空间会分配好的,且形状被记录在cpu端
       shared_ptr<Filler<Dtype> > bias_filler(GetFiller<Dtype>(
           this->layer_param_.inner_product_param().bias_filler()));
-      bias_filler->Fill(this->blobs_[1].get());
+      bias_filler->Fill(this->blobs_[1].get());		//fang:进行偏执的初始值填充
     }
   }  // parameter initialization
   this->param_propagate_down_.resize(this->blobs_.size(), true);
@@ -59,16 +59,16 @@ void InnerProductLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   // Figure out the dimensions
   const int axis = bottom[0]->CanonicalAxisIndex(
-      this->layer_param_.inner_product_param().axis());
-  const int new_K = bottom[0]->count(axis);
+      this->layer_param_.inner_product_param().axis());	//axis default为 1,这是要隔开 batch 个数 和 真正的输入神经元个数
+  const int new_K = bottom[0]->count(axis);	//就是w宽度,代表了 输入神经元个数
   CHECK_EQ(K_, new_K)
       << "Input size incompatible with inner product parameters.";
   // The first "axis" dimensions are independent inner products; the total
   // number of these is M_, the product over these dimensions.
-  M_ = bottom[0]->count(0, axis);
+  M_ = bottom[0]->count(0, axis);			//就是h高度,代表了 batch 个数
   // The top shape will be the bottom shape with the flattened axes dropped,
   // and replaced by a single axis with dimension num_output (N_).
-  vector<int> top_shape = bottom[0]->shape();
+  vector<int> top_shape = bottom[0]->shape();	//nchw的话,就是一个具有四个int的 vector,hw的话,就是一个具有2个int的 vector,LayerSetUp 的时候,weight 的逻辑形状是 2 int vector
   top_shape.resize(axis + 1);
   top_shape[axis] = N_;
   top[0]->Reshape(top_shape);

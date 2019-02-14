@@ -33,7 +33,7 @@ SyncedMemory::~SyncedMemory() {
   if (gpu_ptr_ && own_gpu_data_) {
     CUDA_CHECK(cudaFree(gpu_ptr_));
   }
-#endif  // CPU_ONLY
+#endif
 }
 
 inline void SyncedMemory::to_cpu() {
@@ -51,7 +51,7 @@ inline void SyncedMemory::to_cpu() {
       CaffeMallocHost(&cpu_ptr_, size_, &cpu_malloc_use_cuda_);
       own_cpu_data_ = true;
     }
-    caffe_gpu_memcpy(size_, gpu_ptr_, cpu_ptr_);
+    caffe_gpu_memcpy(size_, gpu_ptr_, cpu_ptr_);	// in math_functions.cu ,最终会调用 cudaMemcpy
     head_ = SYNCED;
 #else
     NO_GPU;
@@ -96,7 +96,7 @@ const void* SyncedMemory::cpu_data() {
   return (const void*)cpu_ptr_;
 }
 
-void SyncedMemory::set_cpu_data(void* data) {
+void SyncedMemory::set_cpu_data(void* data) {	//fang:data的重置,使用已有的在cpu上的data替换 syncedmem 正在own的那块data(还会用于blob data的部分共享)
   check_device();
   CHECK(data);
   if (own_cpu_data_) {
@@ -104,7 +104,7 @@ void SyncedMemory::set_cpu_data(void* data) {
   }
   cpu_ptr_ = data;
   head_ = HEAD_AT_CPU;
-  own_cpu_data_ = false;
+  own_cpu_data_ = false;	//非本模块malloc的内存本模块不负责free
 }
 
 const void* SyncedMemory::gpu_data() {
@@ -153,7 +153,7 @@ void* SyncedMemory::mutable_gpu_data() {
 }
 
 #ifndef CPU_ONLY
-void SyncedMemory::async_gpu_push(const cudaStream_t& stream) {
+void SyncedMemory::async_gpu_push(const cudaStream_t& stream) {//= HEAD_AT_CPU + to_gpu()
   check_device();
   CHECK(head_ == HEAD_AT_CPU);
   if (gpu_ptr_ == NULL) {

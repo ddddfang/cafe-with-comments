@@ -40,12 +40,12 @@ class Layer {
   explicit Layer(const LayerParameter& param)
     : layer_param_(param) {
       // Set phase and copy blobs (if there are any).
-      phase_ = param.phase();
+      phase_ = param.phase();	//获取当前的 phase: test/train ?
       if (layer_param_.blobs_size() > 0) {
         blobs_.resize(layer_param_.blobs_size());
         for (int i = 0; i < layer_param_.blobs_size(); ++i) {
-          blobs_[i].reset(new Blob<Dtype>());
-          blobs_[i]->FromProto(layer_param_.blobs(i));
+          blobs_[i].reset(new Blob<Dtype>());			//fang: 申请了blob空间,
+          blobs_[i]->FromProto(layer_param_.blobs(i));	//fang: 拷贝 layer_param_ 指示的 blob
         }
       }
     }
@@ -64,12 +64,13 @@ class Layer {
    * Sets up the loss weight multiplier blobs for any non-zero loss weights.
    * This method may not be overridden.
    */
-  void SetUp(const vector<Blob<Dtype>*>& bottom,
-      const vector<Blob<Dtype>*>& top) {
+
+  //fang: layer 的初始化
+  void SetUp(const vector<Blob<Dtype>*>& bottom, const vector<Blob<Dtype>*>& top) {
     CheckBlobCounts(bottom, top);
-    LayerSetUp(bottom, top);
-    Reshape(bottom, top);
-    SetLossWeights(top);
+    LayerSetUp(bottom, top);	//fang: 这是调用到了子类中实现的 LayerSetUp 了
+    Reshape(bottom, top);			//根据输入的 blob 设置 top blobs 和 internal buffer
+    SetLossWeights(top);		//
   }
 
   /**
@@ -123,6 +124,8 @@ class Layer {
    *
    * Your layer should implement Forward_cpu and (optionally) Forward_gpu.
    */
+
+  //fang: 从 bottom 层接收数据并计算后送到 top 层
   inline Dtype Forward(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top);
 
@@ -147,6 +150,9 @@ class Layer {
    *
    * Your layer should implement Backward_cpu and (optionally) Backward_gpu.
    */
+
+  //fang: 根据 相对top层输出的 delta(存放在 top blob 的 diff 中),计算相对于输入的 delta, 并传递到 bottom 层. (梯度计算)
+  //一个有参数的layer需要计算相对于各个参数的梯度值并存储起来
   inline void Backward(const vector<Blob<Dtype>*>& top,
       const vector<bool>& propagate_down,
       const vector<Blob<Dtype>*>& bottom);
@@ -300,7 +306,7 @@ class Layer {
   /** The vector that stores the learnable parameters as a set of blobs. */
   vector<shared_ptr<Blob<Dtype> > > blobs_;
   /** Vector indicating whether to compute the diff of each param blob. */
-  vector<bool> param_propagate_down_;
+  vector<bool> param_propagate_down_;	//fang:指示是否需要更新本layers的某个参数
 
   /** The vector that indicates whether each top blob has a non-zero weight in
    *  the objective function. */
@@ -411,7 +417,7 @@ class Layer {
 // functions.
 template <typename Dtype>
 inline Dtype Layer<Dtype>::Forward(const vector<Blob<Dtype>*>& bottom,
-    const vector<Blob<Dtype>*>& top) {
+    const vector<Blob<Dtype>*>& top) {	//fang: 就从这里开始调用到具体 layer 的 Forward_cpu()/Forward_gpu()了
   Dtype loss = 0;
   Reshape(bottom, top);
   switch (Caffe::mode()) {

@@ -20,6 +20,7 @@ void BaseConvolutionLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
   num_spatial_axes_ = num_axes - first_spatial_axis;
   CHECK_GE(num_spatial_axes_, 0);
   vector<int> spatial_dim_blob_shape(1, std::max(num_spatial_axes_, 1));
+
   // Setup filter kernel dimensions (kernel_shape_).
   kernel_shape_.Reshape(spatial_dim_blob_shape);
   int* kernel_shape_data = kernel_shape_.mutable_cpu_data();
@@ -117,7 +118,7 @@ void BaseConvolutionLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
   channels_ = bottom[0]->shape(channel_axis_);
   num_output_ = this->layer_param_.convolution_param().num_output();
   CHECK_GT(num_output_, 0);
-  group_ = this->layer_param_.convolution_param().group();
+  group_ = this->layer_param_.convolution_param().group();	//fang: 将卷积操作放在多个 cudaStream_t 中执行,提高并行性能,但默认 group为1
   CHECK_EQ(channels_ % group_, 0);
   CHECK_EQ(num_output_ % group_, 0)
       << "Number of output should be multiples of group.";
@@ -161,6 +162,7 @@ void BaseConvolutionLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
     } else {
       this->blobs_.resize(1);
     }
+	//fang: 这里填充 weight filler(待更新的初始值)
     // Initialize and fill the weights:
     // output channels x input channels per-group x kernel height x kernel width
     this->blobs_[0].reset(new Blob<Dtype>(weight_shape));
@@ -256,7 +258,7 @@ void BaseConvolutionLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
 
 template <typename Dtype>
 void BaseConvolutionLayer<Dtype>::forward_cpu_gemm(const Dtype* input,
-    const Dtype* weights, Dtype* output, bool skip_im2col) {
+    const Dtype* weights, Dtype* output, bool skip_im2col) {	//ConvolutionLayer 会调用回来,GEMM =general matrix multiply
   const Dtype* col_buff = input;
   if (!is_1x1_) {
     if (!skip_im2col) {

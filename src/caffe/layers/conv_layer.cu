@@ -2,7 +2,7 @@
 
 #include "caffe/layers/conv_layer.hpp"
 
-namespace caffe {
+namespace caffe {	//fang: cuda也是带有c++编译器
 
 template <typename Dtype>
 void ConvolutionLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,

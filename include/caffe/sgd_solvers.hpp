@@ -30,7 +30,7 @@ class SGDSolver : public Solver<Dtype> {
   void PreSolve();
   virtual void Normalize(int param_id);
   virtual void Regularize(int param_id);
-  virtual void ComputeUpdateValue(int param_id, Dtype rate);
+  virtual void ComputeUpdateValue(int param_id, Dtype rate);		//fang: ComputeUpdateValue 是实现update参数的核心函数
   virtual void ClipGradients();
   virtual void SnapshotSolverState(const string& model_filename);
   virtual void SnapshotSolverStateToBinaryProto(const string& model_filename);

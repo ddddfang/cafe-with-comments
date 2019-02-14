@@ -109,7 +109,7 @@ void MemoryDataLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   CHECK(data_) << "MemoryDataLayer needs to be initialized by calling Reset";
   top[0]->Reshape(batch_size_, channels_, height_, width_);
-  top[1]->Reshape(batch_size_, 1, 1, 1);
+  top[1]->Reshape(batch_size_, 1, 1, 1);	//fang: labels
   top[0]->set_cpu_data(data_ + pos_ * size_);
   top[1]->set_cpu_data(labels_ + pos_);
   pos_ = (pos_ + batch_size_) % n_;

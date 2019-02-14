@@ -9,13 +9,13 @@ template <typename Dtype>
 void LRNLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bottom,
       const vector<Blob<Dtype>*>& top) {
   size_ = this->layer_param_.lrn_param().local_size();
-  CHECK_EQ(size_ % 2, 1) << "LRN only supports odd values for local_size";
+  CHECK_EQ(size_ % 2, 1) << "LRN only supports odd values for local_size";	//size_要是个奇数,默认是5
   pre_pad_ = (size_ - 1) / 2;
   alpha_ = this->layer_param_.lrn_param().alpha();
   beta_ = this->layer_param_.lrn_param().beta();
   k_ = this->layer_param_.lrn_param().k();
   if (this->layer_param_.lrn_param().norm_region() ==
-      LRNParameter_NormRegion_WITHIN_CHANNEL) {
+      LRNParameter_NormRegion_WITHIN_CHANNEL) {			//fang: LRNParameter_NormRegion_WITHIN_CHANNEL
     // Set up split_layer_ to use inputs in the numerator and denominator.
     split_top_vec_.clear();
     split_top_vec_.push_back(&product_input_);
@@ -76,7 +76,7 @@ void LRNLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom,
   width_ = bottom[0]->width();
   switch (this->layer_param_.lrn_param().norm_region()) {
   case LRNParameter_NormRegion_ACROSS_CHANNELS:
-    top[0]->Reshape(num_, channels_, height_, width_);
+    top[0]->Reshape(num_, channels_, height_, width_);	//top 和 scale_ 都和 bottom 相同维度
     scale_.Reshape(num_, channels_, height_, width_);
     break;
   case LRNParameter_NormRegion_WITHIN_CHANNEL:
@@ -166,7 +166,7 @@ void LRNLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
     const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {
   switch (this->layer_param_.lrn_param().norm_region()) {
   case LRNParameter_NormRegion_ACROSS_CHANNELS:
-    CrossChannelBackward_cpu(top, propagate_down, bottom);
+    CrossChannelBackward_cpu(top, propagate_down, bottom);	//好像这个更简单一些,zxnn实现的也是这个
     break;
   case LRNParameter_NormRegion_WITHIN_CHANNEL:
     WithinChannelBackward(top, propagate_down, bottom);

@@ -53,7 +53,7 @@ template <typename Dtype>
 class Layer;
 
 template <typename Dtype>
-class LayerRegistry {
+class LayerRegistry {		//fang: layer 对应的登记仓库,和 solver 对应的工厂实现基本一致--> 见 solver_factory.hpp
  public:
   typedef shared_ptr<Layer<Dtype> > (*Creator)(const LayerParameter&);
   typedef std::map<string, Creator> CreatorRegistry;
@@ -86,8 +86,8 @@ class LayerRegistry {
   static vector<string> LayerTypeList() {
     CreatorRegistry& registry = Registry();
     vector<string> layer_types;
-    for (typename CreatorRegistry::iterator iter = registry.begin();
-         iter != registry.end(); ++iter) {
+	//因为 CreatorRegistry 中的 Creator 需要具体制定类型,c++语法要求这里迭代时写上 typename
+    for (typename CreatorRegistry::iterator iter = registry.begin(); iter != registry.end(); ++iter) {
       layer_types.push_back(iter->first);
     }
     return layer_types;
@@ -101,8 +101,7 @@ class LayerRegistry {
   static string LayerTypeListString() {
     vector<string> layer_types = LayerTypeList();
     string layer_types_str;
-    for (vector<string>::iterator iter = layer_types.begin();
-         iter != layer_types.end(); ++iter) {
+    for (vector<string>::iterator iter = layer_types.begin(); iter != layer_types.end(); ++iter) {
       if (iter != layer_types.begin()) {
         layer_types_str += ", ";
       }
@@ -124,10 +123,14 @@ class LayerRegisterer {
 };
 
 
+//定义static变量,构造函数自动触发 AddCreator 操作,以后主要就是 CreateLayer() 了(被 net.cpp 等调用)
 #define REGISTER_LAYER_CREATOR(type, creator)                                  \
   static LayerRegisterer<float> g_creator_f_##type(#type, creator<float>);     \
   static LayerRegisterer<double> g_creator_d_##type(#type, creator<double>)    \
 
+
+//简单的layer直接使用这里定义的 Creator_ 函数并注册,convolution等layer单独在
+//layer_factory.cpp 中定义对应的 Creator_ 函数
 #define REGISTER_LAYER_CLASS(type)                                             \
   template <typename Dtype>                                                    \
   shared_ptr<Layer<Dtype> > Creator_##type##Layer(const LayerParameter& param) \

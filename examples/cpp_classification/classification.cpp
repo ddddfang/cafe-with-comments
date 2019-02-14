@@ -56,8 +56,8 @@ Classifier::Classifier(const string& model_file,
 #endif
 
   /* Load the network. */
-  net_.reset(new Net<float>(model_file, TEST));
-  net_->CopyTrainedLayersFrom(trained_file);
+  net_.reset(new Net<float>(model_file, TEST));	//fang:new 一个 test network, Net::Net()--> Net::Init(),ptototxt 里面指定的 nchw get!
+  net_->CopyTrainedLayersFrom(trained_file);	//加载 parameters 权重参数
 
   CHECK_EQ(net_->num_inputs(), 1) << "Network should have exactly one input.";
   CHECK_EQ(net_->num_outputs(), 1) << "Network should have exactly one output.";
@@ -66,7 +66,7 @@ Classifier::Classifier(const string& model_file,
   num_channels_ = input_layer->channels();
   CHECK(num_channels_ == 3 || num_channels_ == 1)
     << "Input layer should have 1 or 3 channels.";
-  input_geometry_ = cv::Size(input_layer->width(), input_layer->height());
+  input_geometry_ = cv::Size(input_layer->width(), input_layer->height());	//使用 ptototxt 宽高信息
 
   /* Load the binaryproto mean file. */
   SetMean(mean_file);
@@ -103,13 +103,13 @@ static std::vector<int> Argmax(const std::vector<float>& v, int N) {
 
 /* Return the top N predictions. */
 std::vector<Prediction> Classifier::Classify(const cv::Mat& img, int N) {
-  std::vector<float> output = Predict(img);
+  std::vector<float> output = Predict(img);	//fang:对该图像进行预测
 
   N = std::min<int>(labels_.size(), N);
   std::vector<int> maxN = Argmax(output, N);
   std::vector<Prediction> predictions;
   for (int i = 0; i < N; ++i) {
-    int idx = maxN[i];
+    int idx = maxN[i];	//fang:存放图像的最可能的 N 个预测结果(类别)
     predictions.push_back(std::make_pair(labels_[idx], output[idx]));
   }
 
@@ -124,7 +124,7 @@ void Classifier::SetMean(const string& mean_file) {
   /* Convert from BlobProto to Blob<float> */
   Blob<float> mean_blob;
   mean_blob.FromProto(blob_proto);
-  CHECK_EQ(mean_blob.channels(), num_channels_)
+  CHECK_EQ(mean_blob.channels(), num_channels_)	//这个 num_channels_ 还是来自 prototxt
     << "Number of channels of mean file doesn't match input layer.";
 
   /* The format of the mean file is planar 32-bit float BGR or grayscale. */
@@ -154,12 +154,12 @@ std::vector<float> Classifier::Predict(const cv::Mat& img) {
   /* Forward dimension change to all layers. */
   net_->Reshape();
 
-  std::vector<cv::Mat> input_channels;
-  WrapInputLayer(&input_channels);
+  std::vector<cv::Mat> input_channels;	//各个 channels 的 data
+  WrapInputLayer(&input_channels);		//后面通过 input_channels 修改 input_layer->mutable_cpu_data()
 
   Preprocess(img, &input_channels);
 
-  net_->Forward();
+  net_->Forward();	//fang:开始预测
 
   /* Copy the output layer to a std::vector */
   Blob<float>* output_layer = net_->output_blobs()[0];
@@ -180,8 +180,8 @@ void Classifier::WrapInputLayer(std::vector<cv::Mat>* input_channels) {
   int height = input_layer->height();
   float* input_data = input_layer->mutable_cpu_data();
   for (int i = 0; i < input_layer->channels(); ++i) {
-    cv::Mat channel(height, width, CV_32FC1, input_data);
-    input_channels->push_back(channel);
+    cv::Mat channel(height, width, CV_32FC1, input_data);	//
+    input_channels->push_back(channel);	//这后面通过 input_channels 是不是就可以修改 input_layer->mutable_cpu_data() 了 ?
     input_data += width * height;
   }
 }
@@ -191,7 +191,7 @@ void Classifier::Preprocess(const cv::Mat& img,
   /* Convert the input image to the input image format of the network. */
   cv::Mat sample;
   if (img.channels() == 3 && num_channels_ == 1)
-    cv::cvtColor(img, sample, cv::COLOR_BGR2GRAY);
+    cv::cvtColor(img, sample, cv::COLOR_BGR2GRAY);	//prototxt指定 1 channel,但实际image是 3 channel 的话,就取灰度值填充 数据源头
   else if (img.channels() == 4 && num_channels_ == 1)
     cv::cvtColor(img, sample, cv::COLOR_BGRA2GRAY);
   else if (img.channels() == 4 && num_channels_ == 3)
@@ -199,27 +199,27 @@ void Classifier::Preprocess(const cv::Mat& img,
   else if (img.channels() == 1 && num_channels_ == 3)
     cv::cvtColor(img, sample, cv::COLOR_GRAY2BGR);
   else
-    sample = img;
+    sample = img;										//1/5.img 根据 channel 得到 灰度图像或嘴硬通道的图像 sample
 
   cv::Mat sample_resized;
   if (sample.size() != input_geometry_)
     cv::resize(sample, sample_resized, input_geometry_);
   else
-    sample_resized = sample;
+    sample_resized = sample;							//2/5.sample 根据 prototxt 制定的size 缩放得到 sample_resized
 
   cv::Mat sample_float;
   if (num_channels_ == 3)
     sample_resized.convertTo(sample_float, CV_32FC3);
   else
-    sample_resized.convertTo(sample_float, CV_32FC1);
+    sample_resized.convertTo(sample_float, CV_32FC1);	//3/5.sample_resized 转换得到 对应的 float 型得到 sample_float
 
   cv::Mat sample_normalized;
-  cv::subtract(sample_float, mean_, sample_normalized);
+  cv::subtract(sample_float, mean_, sample_normalized);	//4/5.sample_float 减去 mean 得到 sample_normalized
 
   /* This operation will write the separate BGR planes directly to the
    * input layer of the network because it is wrapped by the cv::Mat
    * objects in input_channels. */
-  cv::split(sample_normalized, *input_channels);
+  cv::split(sample_normalized, *input_channels);		//5/5.就是 opencv 的复制操作,可以将 src 的各个通道数据分别复制到 dst,input_channels 其实就是 net的 input layer 了
 
   CHECK(reinterpret_cast<float*>(input_channels->at(0).data)
         == net_->input_blobs()[0]->cpu_data())
@@ -234,22 +234,24 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  ::google::InitGoogleLogging(argv[0]);
+  ::google::InitGoogleLogging(argv[0]);	//fang: Init glog
 
   string model_file   = argv[1];
   string trained_file = argv[2];
   string mean_file    = argv[3];
   string label_file   = argv[4];
-  Classifier classifier(model_file, trained_file, mean_file, label_file);
+  /* 创建 net 并 init,加载权重参数,获取nchw信息,SetMean */
+  Classifier classifier(model_file, trained_file, mean_file, label_file);	//fang: model_file: net cfg, 构造 Classifier 过程中会 new Net,会调用到 Net::Init()
 
   string file = argv[5];
 
   std::cout << "---------- Prediction for "
             << file << " ----------" << std::endl;
 
+  /* 读取一帧图像数据,这个宽高信息可能更准确 */
   cv::Mat img = cv::imread(file, -1);
   CHECK(!img.empty()) << "Unable to decode image " << file;
-  std::vector<Prediction> predictions = classifier.Classify(img);
+  std::vector<Prediction> predictions = classifier.Classify(img);	//fang:预测并分类
 
   /* Print the top N predictions. */
   for (size_t i = 0; i < predictions.size(); ++i) {

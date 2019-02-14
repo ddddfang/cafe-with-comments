@@ -79,7 +79,7 @@ void DataLayer<Dtype>::Next() {
 
 // This function is called on prefetch thread
 template<typename Dtype>
-void DataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
+void DataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {	//fang: BasePrefetchingDataLayer 的线程调用过来,load 一个batch的数据
   CPUTimer batch_timer;
   batch_timer.Start();
   double read_time = 0;
@@ -95,7 +95,7 @@ void DataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
     while (Skip()) {
       Next();
     }
-    datum.ParseFromString(cursor_->value());
+    datum.ParseFromString(cursor_->value());	//fang: 从数据库 getdata,到 dataum(样本数据)
     read_time += timer.MicroSeconds();
 
     if (item_id == 0) {
@@ -105,23 +105,23 @@ void DataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
       vector<int> top_shape = this->data_transformer_->InferBlobShape(datum);
       this->transformed_data_.Reshape(top_shape);
       // Reshape batch according to the batch_size.
-      top_shape[0] = batch_size;
-      batch->data_.Reshape(top_shape);
+      top_shape[0] = batch_size;			//fang: 定 n c h w 中的 n
+      batch->data_.Reshape(top_shape);		//fang: 这里可能伴随着blob实际使用的 SyncMemory 的创建
     }
 
     // Apply data transformations (mirror, scale, crop...)
     timer.Start();
-    int offset = batch->data_.offset(item_id);
-    Dtype* top_data = batch->data_.mutable_cpu_data();
+    int offset = batch->data_.offset(item_id);	//fang: 跳到下一个图像的起始
+    Dtype* top_data = batch->data_.mutable_cpu_data();	//先拷贝到 cpu blob
     this->transformed_data_.set_cpu_data(top_data + offset);
-    this->data_transformer_->Transform(datum, &(this->transformed_data_));
+    this->data_transformer_->Transform(datum, &(this->transformed_data_));	//fang:变成具有形状 n c h w 的 blob 数据,便随着数据的 mirror scale ...
     // Copy label.
     if (this->output_labels_) {
       Dtype* top_label = batch->label_.mutable_cpu_data();
       top_label[item_id] = datum.label();
     }
     trans_time += timer.MicroSeconds();
-    Next();
+    Next();	//fang:游标下移
   }
   timer.Stop();
   batch_timer.Stop();

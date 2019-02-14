@@ -70,7 +70,7 @@ Dtype SGDSolver<Dtype>::GetLearningRate() {
 }
 
 template <typename Dtype>
-void SGDSolver<Dtype>::PreSolve() {
+void SGDSolver<Dtype>::PreSolve() {	//fang:基类会负责调用这个方法
   // Initialize the history
   const vector<Blob<Dtype>*>& net_params = this->net_->learnable_params();
   history_.clear();
@@ -106,20 +106,19 @@ void SGDSolver<Dtype>::ClipGradients() {
 }
 
 template <typename Dtype>
-void SGDSolver<Dtype>::ApplyUpdate() {
-  Dtype rate = GetLearningRate();
+void SGDSolver<Dtype>::ApplyUpdate() {		//fang:子类只是实现 ApplyUpdate 方法,基类会负责调用他们
+  Dtype rate = GetLearningRate();	//fang: 得到学习率
   if (this->param_.display() && this->iter_ % this->param_.display() == 0) {
     LOG_IF(INFO, Caffe::root_solver()) << "Iteration " << this->iter_
         << ", lr = " << rate;
   }
   ClipGradients();
-  for (int param_id = 0; param_id < this->net_->learnable_params().size();
-       ++param_id) {
-    Normalize(param_id);
-    Regularize(param_id);
-    ComputeUpdateValue(param_id, rate);
+  for (int param_id = 0; param_id < this->net_->learnable_params().size(); ++param_id) {
+    Normalize(param_id);				//fang: 对待更新的权值参数进行归一化
+    Regularize(param_id);				//fang: L2 正则化, loss对wij的偏导数 = decay * wij + loss对wij的偏导数
+    ComputeUpdateValue(param_id, rate);	//fang: vij = lrrate * loss对wij的偏导数 + momentum * vij , loss对wij的偏导数 = vij
   }
-  this->net_->Update();
+  this->net_->Update();	//fang: 计算更新后的权值参数 = 原权值参数 - (修正了的)loss对权值的偏导数
 
   // Increment the internal iter_ counter -- its value should always indicate
   // the number of times the weights have been updated.
@@ -130,7 +129,7 @@ template <typename Dtype>
 void SGDSolver<Dtype>::Normalize(int param_id) {
   if (this->param_.iter_size() == 1) { return; }
   // Scale gradient to counterbalance accumulation.
-  const vector<Blob<Dtype>*>& net_params = this->net_->learnable_params();
+  const vector<Blob<Dtype>*>& net_params = this->net_->learnable_params();	//fang: 需要学习更新的参数
   const Dtype accum_normalization = Dtype(1.) / this->param_.iter_size();
   switch (Caffe::mode()) {
   case Caffe::CPU: {
@@ -217,21 +216,28 @@ void SGDSolver<Dtype>::Regularize(int param_id) {
 #ifndef CPU_ONLY
 template <typename Dtype>
 void sgd_update_gpu(int N, Dtype* g, Dtype* h, Dtype momentum,
-    Dtype local_rate);
+    Dtype local_rate);	//在 cu 文件中实现
 #endif
 
 template <typename Dtype>
 void SGDSolver<Dtype>::ComputeUpdateValue(int param_id, Dtype rate) {
   const vector<Blob<Dtype>*>& net_params = this->net_->learnable_params();
   const vector<float>& net_params_lr = this->net_->params_lr();
+
+  //fang: momentum = 0.9 in lenet
   Dtype momentum = this->param_.momentum();
+
+  //fang: local_rate = lr_mult * global_rate, lr_mult为该层学习率乘子，在lenet_train_test.prototxt中设置
   Dtype local_rate = rate * net_params_lr[param_id];
+
   // Compute the update to history, then copy it to the parameter diff.
   switch (Caffe::mode()) {
   case Caffe::CPU: {
+  	//fang: axpby = ax plus by... ,计算新的权值更新变化值 delta w,结果保存在历史权值变化中
     caffe_cpu_axpby(net_params[param_id]->count(), local_rate,
               net_params[param_id]->cpu_diff(), momentum,
               history_[param_id]->mutable_cpu_data());
+	//fang: 从历史权值变化中把变化值 delta w 保存到历史权值diff中
     caffe_copy(net_params[param_id]->count(),
         history_[param_id]->cpu_data(),
         net_params[param_id]->mutable_cpu_diff());
@@ -254,7 +260,7 @@ void SGDSolver<Dtype>::ComputeUpdateValue(int param_id, Dtype rate) {
 }
 
 template <typename Dtype>
-void SGDSolver<Dtype>::SnapshotSolverState(const string& model_filename) {
+void SGDSolver<Dtype>::SnapshotSolverState(const string& model_filename) {	//fang:基类会负责调用此方法
   switch (this->param_.snapshot_format()) {
     case caffe::SolverParameter_SnapshotFormat_BINARYPROTO:
       SnapshotSolverStateToBinaryProto(model_filename);
@@ -320,7 +326,7 @@ void SGDSolver<Dtype>::SnapshotSolverStateToHDF5(
 }
 
 template <typename Dtype>
-void SGDSolver<Dtype>::RestoreSolverStateFromBinaryProto(
+void SGDSolver<Dtype>::RestoreSolverStateFromBinaryProto(	//fang:基类会负责调用此方法
     const string& state_file) {
   SolverState state;
   ReadProtoFromBinaryFile(state_file, &state);
@@ -340,7 +346,7 @@ void SGDSolver<Dtype>::RestoreSolverStateFromBinaryProto(
 }
 
 template <typename Dtype>
-void SGDSolver<Dtype>::RestoreSolverStateFromHDF5(const string& state_file) {
+void SGDSolver<Dtype>::RestoreSolverStateFromHDF5(const string& state_file) {	//fang:基类会负责调用此方法
 #ifdef USE_HDF5
   hid_t file_hid = H5Fopen(state_file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
   CHECK_GE(file_hid, 0) << "Couldn't open solver state file " << state_file;
@@ -370,6 +376,8 @@ void SGDSolver<Dtype>::RestoreSolverStateFromHDF5(const string& state_file) {
 }
 
 INSTANTIATE_CLASS(SGDSolver);
+//fang:告诉工厂自己的 Creator_SGDSolver 方法,定义俩 static SolverRegisterer<>(目的在于触发其构造函数
+//将 <type,Creator_xxSolver>添加到登记仓库)
 REGISTER_SOLVER_CLASS(SGD);
 
 }  // namespace caffe
